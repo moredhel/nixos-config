@@ -27,28 +27,22 @@ in
       ];
   };
 
-  # Use the GRUB 2 boot loader.
+  boot.cleanTmpDir = true;
   boot.supportedFilesystems = ["zfs"];
   boot.loader.grub.enable = true;
   boot.loader.grub.version = 2;
-  # boot.loader.grub.efiSupport = true;
-  # boot.loader.grub.efiInstallAsRemovable = true;
-  # boot.loader.efi.efiSysMountPoint = "/boot/efi";
-  # Define on which hard drive you want to install Grub.
-  boot.loader.grub.device = "/dev/sdb"; # or "nodev" for efi only
+  boot.loader.grub.device = "/dev/sdc"; # or "nodev" for efi only
 
   networking.hostId = "8425e349";
   networking.hostName = "turtaw"; # Define your hostname.
-  networking.wireless.enable = true;  # Enables wireless support via wpa_supplicant.
-
-  # Select internationalisation properties.
+  networking.networkmanager = {
+    enable = true;
+  };
   i18n = {
     consoleFont = "Lat2-Terminus16";
     consoleKeyMap = "dvorak";
     defaultLocale = "en_US.UTF-8";
   };
-
-  # Set your time zone.
   time.timeZone = "Europe/London";
 
   # QT4/5 global theme
@@ -74,6 +68,7 @@ in
   environment.systemPackages = with pkgs; [
     # system
     emacs
+    tmux
     git
     gnumake
     htop
@@ -81,10 +76,25 @@ in
     nix-repl
     vim
     wget
-    davfs2
     isync
     file
     pv
+    dnsutils
+    ag
+    lsof
+    networkmanager
+    wrk
+    chromium
+    jq
+    html2text
+
+    # Rust dev
+    # latest.rustChannels.nightly.rust
+    rustracer
+
+    google-cloud-sdk
+
+    nixops
 
     # raspberry pi stuff
     hdparm
@@ -100,16 +110,27 @@ in
     xcape
     xlockmore
     xautolock
+    vlc
 
     # communication
-    weechat
     slack
+    quaternion
+    weechat
+    weechat-matrix-bridge
+    # riot-web
 
     # gui
     xfce.thunar
-    # firefox # using nightly from the firefox overlay
-    google-chrome
+    firefox # using nightly from the firefox overlay
+    # latest.firefox-bin
     enpass
+    # google-chrome
+    chromium
+    # spotify
+    terminator
+    evince
+    transmission
+    steam
 
     # Qt theme
     breeze-qt5
@@ -120,6 +141,9 @@ in
     # fallback themes
     gnome3.adwaita-icon-theme
     hicolor_icon_theme
+
+    # nix Beta
+    nixUnstable
   ];
   environment.pathsToLink = ["/share"];
 
@@ -131,16 +155,18 @@ in
     serviceConfig = {
       Restart = "always";
       ExecStart = "${pkgs.xautolock}/bin/xautolock -lockaftersleep -locker ${pkgs.xlockmore}/bin/xlock";
-      Environment = "\"DISPLAY=:0\""; # test if this is necessary
+      Environment = "\"DISPLAY=:0\"";
     };
   };
   systemd.user.services.mbsync = {
+    enable = true;
     description = "Run mbsync";
     wantedBy = [ "default.target" ];
     after = [ "network.target" ];
     serviceConfig.ExecStart = "${pkgs.isync}/bin/mbsync -a";
   };
   systemd.user.timers.mbsync = {
+    enable = true;
     description = "run mbsync every 5 minutes";
     timerConfig = {
       OnBootSec = "10m";
@@ -150,12 +176,14 @@ in
   };
 
   systemd.user.services.mu-fastmail = {
+    enable = true;
     description = "Update email index for fastmail";
     wantedBy = [ "default.target" ];
     after = [ "network.target" ];
     serviceConfig.ExecStart = "${pkgs.mu}/bin/mu index -m /home/moredhel/mail";
   };
   systemd.user.timers.mu-fastmail = {
+    enable = true;
     description = "run mu-fastmail every 5 minutes";
     timerConfig = {
       OnBootSec = "11m";
@@ -164,23 +192,29 @@ in
     };
   };
 
-  # List services that you want to enable:
 
-  # Enable the OpenSSH daemon.
-  # services.openssh.enable = true;
-
-  # Open ports in the firewall.
-  # networking.firewall.allowedTCPPorts = [ ... ];
-  # networking.firewall.allowedUDPPorts = [ ... ];
-  # Or disable the firewall altogether.
   networking.firewall.enable = true;
+  networking.firewall.allowedTCPPorts = [];
+  networking.firewall.allowedUDPPorts = [];
 
   # Enable CUPS to print documents.
   # services.printing.enable = true;
 
-  # services.xserver.xkbOptions = "eurosign:e";
-  #
   services = {
+    openvpn.servers = {
+      vps = {
+        config = '' config /home/moredhel/turtaw.ovpn '';
+        updateResolvConf = true;
+      };
+    };
+    bitlbee = {
+      enable = true;
+      plugins = [ pkgs.bitlbee-facebook ];
+    };
+    openssh.enable = false;
+    urxvtd = {
+      enable = true;
+    };
     xserver = {
       layout = "dvorak";
       enable = true;
@@ -203,18 +237,31 @@ in
           name = "custom";
           start = ''
           # this feels mildly hacky, would be nice to move everything into user systemd services
-          ${pkgs.trayer}/bin/trayer --edge top --height 14.5 --width 8 --align right --transparent true --alpha 0 --tint '0x141314' --monitor 1 &
+          ${pkgs.trayer}/bin/trayer --edge top --height 14.5 --width 8 --align right --transparent true --alpha 0 --tint '0x141314' --monitor 1 --SetDockType true &
           ${pkgs.pa_applet}/bin/pa-applet &
 
           ${pkgs.xcape}/bin/xcape
-          ${pkgs.feh}/bin/feh --bg-fill --randomize $HOME/Pictures/wallpapers/*
+          # ${pkgs.feh}/bin/feh --bg-fill --randomize /home/moredhel/Pictures/wallpapers/*
+
+          # start timers
+          systemctl --user start mbsync.timer
+          systemctl --user start mu-fastmail.timer
 
           trap 'trap - SIGINT SIGTERM EXIT && kill 0 && wait' SIGINT SIGTERM EXIT
           '';
         }
       ];
 
-      xkbOptions = "ctrl:nocaps"; # Make caps lock an additional ctrl key
+      # Make caps lock an additional ctrl key
+      xkbOptions = "ctrl:nocaps";
+    };
+    cjdns = {
+      enable = true;
+      confFile = /etc/nixos/private/cjdroute.conf;
+    };
+    ipfs = {
+      enable = true;
+      autoMount = true;
     };
     syncthing = {
       enable = true;
@@ -244,26 +291,34 @@ in
       autoScrub.enable = true;
     };
   };
+  programs.ssh = {
+    startAgent = true;
+  };
+  programs.tmux = {
+    enable = true;
+    clock24 = true;
+    extraTmuxConf = ''
+    set -g mouse on;
+    '';
+  };
 
+  powerManagement.scsiLinkPolicy = null;
   powerManagement.powertop.enable = true;
   powerManagement.enable = true;
-  # Enable the KDE Desktop Environment.
-  # services.xserver.displayManager.sddm.enable = true;
-  # services.xserver.desktopManager.plasma5.enable = true;
 
-  # Define a user account. Don't forget to set a password with ‘passwd’.
   users.mutableUsers = false;
-  users.groups = { davfs2.gid = 1001; };
-  users.extraUsers.davfs2 = {};
   users.extraUsers.moredhel = {
     isNormalUser = true;
-    extraGroups = ["wheel" "systemd-journal" "users" "docker" "postdrop"];
+    extraGroups = ["wheel" "systemd-journal" "users" "docker" "postdrop" "ipfs"];
     password = (pkgs.lib.fileContents /etc/nixos/private/user_passwd);
     uid = 1000;
   };
 
   virtualisation = {
     docker.enable = true;
+    # docker.extraOptions = "-D=true --storage-opt zfs.fsname=data/docker";
+    # docker.storageDriver = "zfs";
+    docker.package = pkgs.docker-edge;
     libvirtd.enable = true;
   };
   # The NixOS release to be compatible with for stateful data such as databases.
@@ -272,7 +327,9 @@ in
   sound.mediaKeys.enable = true;
 
   hardware = {
+    opengl.driSupport32Bit = true;
     pulseaudio.enable = true;
+    pulseaudio.support32Bit = true;
     trackpoint = {
       enable = true;
       sensitivity = 255;
