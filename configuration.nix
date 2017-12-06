@@ -43,31 +43,31 @@ in
     consoleKeyMap = "dvorak";
     defaultLocale = "en_US.UTF-8";
   };
-  time.timeZone = "Europe/London";
+  time.timeZone = null;
 
   # QT4/5 global theme
-  environment.etc."xdg/Trolltech.conf" = {
-    text = ''
-      [Qt]
-      style=Breeze
-    '';
-    mode = "444";
-  };
+  # environment.etc."xdg/Trolltech.conf" = {
+  #   text = ''
+  #     [Qt]
+  #     style=Breeze
+  #   '';
+  #   mode = "444";
+  # };
 
 # GTK3 global theme (widget and icon theme)
-  environment.etc."xdg/gtk-3.0/settings.ini" = {
-    text = ''
-      [Settings]
-      gtk-icon-theme-name=breeze
-      gtk-theme-name=Breeze-gtk
-    '';
-    mode = "444";
-  };
+  # environment.etc."xdg/gtk-3.0/settings.ini" = {
+  #   text = ''
+  #     [Settings]
+  #     gtk-icon-theme-name=breeze
+  #     gtk-theme-name=Breeze-gtk
+  #   '';
+  #   mode = "444";
+  # };
   # List packages installed in system profile. To search by name, run:
   # $ nix-env -qaP | grep wget
   environment.systemPackages = with pkgs; [
     # system
-    emacs
+    # emacs
     tmux
     git
     gnumake
@@ -87,6 +87,7 @@ in
     chromium
     jq
     html2text
+    networkmanager
 
     # Rust dev
     # latest.rustChannels.nightly.rust
@@ -130,8 +131,10 @@ in
     terminator
     evince
     transmission
+    # (steam.override { nativeOnly = true; runtimeOnly = false; })
     steam
-
+    steam-run-native
+    
     # Qt theme
     breeze-qt5
     breeze-qt4
@@ -147,16 +150,12 @@ in
   ];
   environment.pathsToLink = ["/share"];
 
-  systemd.user.services.xautolock = {
+  systemd.services.illum = {
     enable = true;
-    description = "Automatically lock screen";
-    wantedBy = ["default.target"];
-    path = [ pkgs.xautolock ];
-    serviceConfig = {
-      Restart = "always";
-      ExecStart = "${pkgs.xautolock}/bin/xautolock -lockaftersleep -locker ${pkgs.xlockmore}/bin/xlock";
-      Environment = "\"DISPLAY=:0\"";
-    };
+    description = "Backlight Brightness";
+    wantedBy = [ "graphical-session.target" ];
+    after = [ "graphical-session-pre.target" ];
+    serviceConfig.ExecStart = "${pkgs.overlay.illum}/bin/illum-d -l 2.9";
   };
   systemd.user.services.mbsync = {
     enable = true;
@@ -194,19 +193,33 @@ in
 
 
   networking.firewall.enable = true;
-  networking.firewall.allowedTCPPorts = [];
+  networking.firewall.checkReversePath = false;
+  networking.firewall.allowedTCPPorts = [8000];
   networking.firewall.allowedUDPPorts = [];
 
   # Enable CUPS to print documents.
   # services.printing.enable = true;
 
   services = {
-    openvpn.servers = {
-      vps = {
-        config = '' config /home/moredhel/turtaw.ovpn '';
-        updateResolvConf = true;
+    transmission = {
+      enable = true;
+      settings = {
+        download-dir = "/data/media/torrent/";
+        incomplete-dir = "/data/media/torrent/.incomplete";
       };
     };
+    emacs = {
+      enable = true;
+      install = true;
+      defaultEditor = true;
+      
+    };
+    # openvpn.servers = {
+    #   vps = {
+    #     config = '' config /home/moredhel/turtaw.ovpn '';
+    #     updateResolvConf = true;
+    #   };
+    # };
     bitlbee = {
       enable = true;
       plugins = [ pkgs.bitlbee-facebook ];
@@ -226,9 +239,14 @@ in
           accelSpeed = "1";
       };    
       displayManager.lightdm.enable = true;
-      windowManager.default = "xmonad";
-      windowManager.xmonad.enable = true;
-      windowManager.xmonad.enableContribAndExtras = true;
+
+      videoDrivers = [ "intel" ];
+      updateDbusEnvironment = true;
+
+      desktopManager.gnome3.enable = true;
+      # windowManager.default = "xmonad";
+      # windowManager.xmonad.enable = true;
+      # windowManager.xmonad.enableContribAndExtras = true;
 
       desktopManager.xterm.enable = false;
       desktopManager.default = "custom";
@@ -236,18 +254,7 @@ in
       [ {
           name = "custom";
           start = ''
-          # this feels mildly hacky, would be nice to move everything into user systemd services
-          ${pkgs.trayer}/bin/trayer --edge top --height 14.5 --width 8 --align right --transparent true --alpha 0 --tint '0x141314' --monitor 1 --SetDockType true &
-          ${pkgs.pa_applet}/bin/pa-applet &
-
-          ${pkgs.xcape}/bin/xcape
-          # ${pkgs.feh}/bin/feh --bg-fill --randomize /home/moredhel/Pictures/wallpapers/*
-
-          # start timers
-          systemctl --user start mbsync.timer
-          systemctl --user start mu-fastmail.timer
-
-          trap 'trap - SIGINT SIGTERM EXIT && kill 0 && wait' SIGINT SIGTERM EXIT
+            # exec .xsession
           '';
         }
       ];
@@ -257,11 +264,22 @@ in
     };
     cjdns = {
       enable = true;
-      confFile = /etc/nixos/private/cjdroute.conf;
+      UDPInterface = {
+        bind = "0.0.0.0:43211";
+        connectTo = {
+		      "54.36.18.68:43211" = {
+		        # "contact" = "hamish@aoeu.me",
+		        password = "aujas.mcgsqntuhntwsnteoauhsnteodaeobkjqvkbHSNTUOHAONUonthueontuh";
+            hostname = "nixos-master";
+		        publicKey = "0194d7156x7jjq8793u8tyl1q9lm18ufbvwv263uf0wbwj0pssd0.k";
+		      };
+        };
+      };
+      # confFile = /etc/nixos/private/cjdroute.conf;
     };
     ipfs = {
       enable = true;
-      autoMount = true;
+      autoMount = false;
     };
     syncthing = {
       enable = true;
@@ -291,6 +309,12 @@ in
       autoScrub.enable = true;
     };
   };
+  programs.bash = {
+    shellInit = ''
+      export TESTING=TRUE
+    '';
+    enableCompletion = true;
+  };
   programs.ssh = {
     startAgent = true;
   };
@@ -305,19 +329,26 @@ in
   powerManagement.scsiLinkPolicy = null;
   powerManagement.powertop.enable = true;
   powerManagement.enable = true;
+  powerManagement.powerDownCommands = ''
+    systemctl stop openvpn-vps
+    pkill notify-osd
+  '';
+  powerManagement.powerUpCommands = ''
+    systemctl start openvpn-vps
+    notify-osd &
+  '';
 
   users.mutableUsers = false;
   users.extraUsers.moredhel = {
     isNormalUser = true;
-    extraGroups = ["wheel" "systemd-journal" "users" "docker" "postdrop" "ipfs"];
+    extraGroups = ["wheel" "systemd-journal" "users" "docker" "postdrop" "ipfs" "libvirtd" "networkmanager"];
     password = (pkgs.lib.fileContents /etc/nixos/private/user_passwd);
     uid = 1000;
   };
 
   virtualisation = {
     docker.enable = true;
-    # docker.extraOptions = "-D=true --storage-opt zfs.fsname=data/docker";
-    # docker.storageDriver = "zfs";
+    docker.enableOnBoot = false;
     docker.package = pkgs.docker-edge;
     libvirtd.enable = true;
   };
