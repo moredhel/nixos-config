@@ -1,3 +1,4 @@
 private
 hardware-configuration.nix
 result
+overlays
