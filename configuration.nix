@@ -6,12 +6,13 @@
 { config, pkgs, ... }:
 
 let
-iconTheme = pkgs.breeze-icons.out;
+  iconTheme = pkgs.breeze-icons.out;
 in
 {
   imports =
     [ # Include the results of the hardware scan.
       ./hardware-configuration.nix
+      <nixos-hardware/lenovo/thinkpad/x230> ./hardware-configuration.nix
     ];
 
   # Allow unfree...
@@ -28,15 +29,42 @@ in
   };
 
   boot.cleanTmpDir = true;
+  boot.zfs.enableUnstable = true;
   boot.supportedFilesystems = ["zfs"];
   boot.loader.grub.enable = true;
   boot.loader.grub.version = 2;
   boot.loader.grub.device = "/dev/sdc"; # or "nodev" for efi only
+  # boot.kernelPackages = pkgs.linuxPackages_latest; # Meltdown/Spectre patch, currently broken
 
   networking.hostId = "8425e349";
   networking.hostName = "turtaw"; # Define your hostname.
+  # networking.interfaces.enp0s25.ip4 = [{ address = "192.168.1.1"; prefixLength = 24; }];
   networking.networkmanager = {
     enable = true;
+  };
+  networking.extraHosts = ''
+    127.0.0.1 lycaon1.address
+    127.0.0.1 lycaon2.address
+  '';
+  networking.wireguard.interfaces = {
+    wg0 = {
+      ips = [ "10.100.0.254/24" ];
+      privateKey = "+C76qS66IHScpFPCoS4pxgyawIkq52stQn6xHU4cOWg=";
+      # publicKey = "mF+e1jD+sKGBAgxishCNxHz3FGDl/4tivlNMGWBd3Go=";
+
+      peers = [{
+        publicKey = "Rj9G2Cfw1+NrzKj9co66pWRcttSXdE0Xkw+QslDNkkw=";
+        allowedIPs = [ "10.100.0.0/24" ];
+        endpoint = "54.36.18.68:5555";
+        persistentKeepalive = 25;
+      }];
+    };
+  };
+
+  fonts = {
+    fonts = [
+      pkgs.fira-mono
+    ];
   };
   i18n = {
     consoleFont = "Lat2-Terminus16";
@@ -72,72 +100,72 @@ in
     git
     gnumake
     htop
-    mu
+    mu # user
     nix-repl
     vim
     wget
-    isync
+    isync # user
     file
     pv
     dnsutils
     ag
     lsof
     networkmanager
-    wrk
-    chromium
+    wrk # ?? follow this up
+    chromium # user
     jq
-    html2text
-    networkmanager
+    html2text # user
 
+    exfat-utils
     # Rust dev
     # latest.rustChannels.nightly.rust
-    rustracer
+    rustracer # user
 
-    google-cloud-sdk
-
-    nixops
+    google-cloud-sdk # user
 
     # raspberry pi stuff
-    hdparm
+    hdparm # user
     unzip
 
     # ui stuff
-    notify-osd
-    libnotify
-    trayer
-    rofi
-    pa_applet
-    haskellPackages.xmobar
-    xcape
-    xlockmore
-    xautolock
-    vlc
+    notify-osd # user
+    libnotify # user
+    trayer # user
+    rofi # user
+    pa_applet # user
+    haskellPackages.xmobar # user
+    xcape # user
+    xlockmore # user
+    xautolock # user
+    vlc # user
+
+    overlay.thunar # user
+    # xfce.thunar
 
     # communication
-    slack
-    quaternion
-    weechat
-    weechat-matrix-bridge
+    # slack # user
+    quaternion # user
+    weechat # user
+    weechat-matrix-bridge # user
     # riot-web
 
     # gui
-    xfce.thunar
-    firefox # using nightly from the firefox overlay
+    # firefox # using nightly from the firefox overlay
     # latest.firefox-bin
-    enpass
+    # enpass # user
     # google-chrome
-    chromium
+    chromium # user
     # spotify
-    terminator
-    evince
-    transmission
+    terminator # user
+    evince # user
+    transmission # user
     # (steam.override { nativeOnly = true; runtimeOnly = false; })
-    steam
-    steam-run-native
+    # steam # user
+    # steam-run-native # user
     
     # Qt theme
     breeze-qt5
-    breeze-qt4
+    breeze-gtk
     # theme
     iconTheme
 
@@ -150,11 +178,13 @@ in
   ];
   environment.pathsToLink = ["/share"];
 
+
   systemd.services.illum = {
+    # TODO: fix this...
     enable = true;
     description = "Backlight Brightness";
-    wantedBy = [ "graphical-session.target" ];
-    after = [ "graphical-session-pre.target" ];
+    wantedBy = [ "default.target" ];
+    after = [ "graphical-session.target" ];
     serviceConfig.ExecStart = "${pkgs.overlay.illum}/bin/illum-d -l 2.9";
   };
   systemd.user.services.mbsync = {
@@ -194,13 +224,96 @@ in
 
   networking.firewall.enable = true;
   networking.firewall.checkReversePath = false;
-  networking.firewall.allowedTCPPorts = [8000];
+  networking.firewall.allowedTCPPorts = [8000 8001 3306];
   networking.firewall.allowedUDPPorts = [];
 
   # Enable CUPS to print documents.
   # services.printing.enable = true;
 
   services = {
+    keybase.enable = true;
+    kbfs = {
+      enable = true;
+    };
+    tlp.enable = true;
+
+    minidlna = {
+      enable = false;
+      mediaDirs = [
+        "/data/media"
+      ];
+    };
+
+    tt-rss = {
+      enable = false;
+      selfUrlPath = "http://me.aoeu.me";
+      virtualHost = "me.aoeu.me";
+      database = {
+        host = "nixos-docker.hamhut1066.com";
+        port = 5432;
+        password = "somepassword";
+      };
+      singleUserMode = true;
+      enableGZipOutput = false;
+    };
+    postgresql.enable = false;
+    dhcpd4 = {
+      enable = false;
+      interfaces = ["enp0s25"];
+      extraConfig = ''
+        subnet 192.168.1.0 netmask 255.255.255.0 {
+       option routers                  192.168.1.1; #Default Gateway
+       option subnet-mask              255.255.255.0;
+       option domain-name              "home.local";
+       option domain-name-servers      192.168.1.2;
+       option netbios-name-servers     192.168.1.2; #WINS Server        
+    range dynamic-bootp 192.168.1.51 192.168.1.100;  #DHCP Range to assign
+       default-lease-time 43200;
+       max-lease-time 86400;
+      }
+      '';
+    };
+    unifi = {
+      enable = false;
+    };
+    traefik = {
+      enable = false;
+      # group = "docker";
+      configOptions = {
+        defaultEntryPoints = [ "http" ];
+        web = {
+          address = ":8080";
+        };
+        docker  ={
+          endpoint = "unix:///var/run/docker.sock";
+          domain = "home.local";
+          watch = true;
+          exposedbydefault = false;
+        };
+      };
+    };
+    nginx = {
+      enable = false;
+      statusPage = true;
+      recommendedOptimisation = true;
+      recommendedProxySettings = true;
+      virtualHosts = {
+        # "lycaon1.address" = {
+        #   locations."/" = {
+        #     proxyPass = "http://localhost:8002/";
+        #   };
+        # };
+        "lycaon2.address" = {
+          locations."/" = {
+            proxyPass = "http://localhost:8003/";
+          };
+        };
+        "lychee" = {
+          locations."/" = {
+          };
+        };
+      };
+    };
     transmission = {
       enable = true;
       settings = {
@@ -212,16 +325,9 @@ in
       enable = true;
       install = true;
       defaultEditor = true;
-      
     };
-    # openvpn.servers = {
-    #   vps = {
-    #     config = '' config /home/moredhel/turtaw.ovpn '';
-    #     updateResolvConf = true;
-    #   };
-    # };
     bitlbee = {
-      enable = true;
+      enable = false;
       plugins = [ pkgs.bitlbee-facebook ];
     };
     openssh.enable = false;
@@ -234,10 +340,10 @@ in
       autorun = true;
       exportConfiguration = true;
       libinput = {
-          enable = false;
-          tapping = false;
-          accelSpeed = "1";
-      };    
+        enable = true;
+        tapping = false;
+        accelSpeed = "1";
+      };
       displayManager.lightdm.enable = true;
 
       videoDrivers = [ "intel" ];
@@ -278,12 +384,11 @@ in
       # confFile = /etc/nixos/private/cjdroute.conf;
     };
     ipfs = {
-      enable = true;
+      enable = false;
       autoMount = false;
     };
     syncthing = {
       enable = true;
-      useInotify = true;
       user = "moredhel";
       dataDir = "/etc/nixos/private/syncthing";
       openDefaultPorts = true;
@@ -327,8 +432,8 @@ in
   };
 
   powerManagement.scsiLinkPolicy = null;
-  powerManagement.powertop.enable = true;
-  powerManagement.enable = true;
+  powerManagement.powertop.enable = false;
+  powerManagement.enable = false;
   powerManagement.powerDownCommands = ''
     systemctl stop openvpn-vps
     pkill notify-osd
@@ -341,12 +446,13 @@ in
   users.mutableUsers = false;
   users.extraUsers.moredhel = {
     isNormalUser = true;
-    extraGroups = ["wheel" "systemd-journal" "users" "docker" "postdrop" "ipfs" "libvirtd" "networkmanager"];
+    extraGroups = ["wheel" "systemd-journal" "users" "docker" "postdrop" "ipfs" "libvirtd" "networkmanager" "rkt"];
     password = (pkgs.lib.fileContents /etc/nixos/private/user_passwd);
     uid = 1000;
   };
 
   virtualisation = {
+    rkt.enable = true;
     docker.enable = true;
     docker.enableOnBoot = false;
     docker.package = pkgs.docker-edge;
@@ -358,13 +464,14 @@ in
   sound.mediaKeys.enable = true;
 
   hardware = {
+    bluetooth.enable = true;
     opengl.driSupport32Bit = true;
     pulseaudio.enable = true;
     pulseaudio.support32Bit = true;
     trackpoint = {
       enable = true;
-      sensitivity = 255;
-      speed = 255;
+      sensitivity = 1000;
+      speed = 1000;
       emulateWheel = true;
       fakeButtons = true;
     };
